@@ -27,6 +27,7 @@
 *.sqlite
 ./functions/*
 ./log.txt
+./.env/*
 
 # OS generated files #
 ######################
