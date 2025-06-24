@@ -9,43 +9,25 @@ This project is designed to analyze and visualize class dependencies and relatio
 - **Graph Analysis**:
   - Calculates graph depth and number of nodes.
   - Identifies isolated nodes.
-  - Detects cycles and converts cyclic graphs into acyclic graphs.
+  - Detects cycles.
   - Finds top dependencies (classes with maximum and minimum dependencies).
-- **Dynamic Traversal**: Traverses the graph from leaves to roots, handling cycles dynamically.
-- **Integration with DeepSeek**: Interacts with DeepSeek for processing node comments.
+- **Dynamic Traversal**: Traverses the graph from leaves to roots, handling cycles dynamically and try to extract the specification for each API class.
+- **Integration with DeepSeek**: Interacts with DeepSeek for processing node comments in order to analyze the comments from dependent methods to geneate a description of steps to configure. A *step to configure (s2r)* declares the steps to configure an Android device for an API class or method to operate when being called in an app code. 
 
 ## Project Structure
 
 ```
-callgraph-2.json
-callgraph-layer-2.json
-.vscode/
-artifacts/
-files/
-java-code/
-report/
-source-code/
-tar-files/
+deepseek/ 
+functions/
+main.py
+prompt.py
 ```
 
 ### Key Files
 
 - **`main.py`**: The main script for graph construction, visualization, and analysis.
-- **`artifacts/`**: Contains intermediate files generated during processing.
-- **`java-code/py-code/`**: Contains Python scripts for processing and analysis.
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd clearblue
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+- **`function/`**: Contains an excel file consisting of the list of API classes. The result of the analysis will be stored under this directory for further notice. 
+- **`py-code/`**: Contains Python scripts for processing and analysis.
 
 ## Usage
 
@@ -70,6 +52,7 @@ links = [
 - **Static Visualization**: `class_graph.png`
 - **Interactive Visualization**: `class_graph.html`
 - **Graph Data**: `class_graph.gml`
+- **Specification**: `class-spec.xlsx`
 
 ### Graph Analysis
 
@@ -78,6 +61,7 @@ The script provides insights such as:
 - Depth of the graph.
 - Isolated nodes.
 - Top dependencies.
+- Prompts for inferring the Android device setting given the method dependencies with comments.
 
 ### Dynamic Traversal
 
