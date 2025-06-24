@@ -1,0 +1,6 @@
+android.content.Intent,java.util.ArrayList getParcelableArrayListExtra
+android.content.Intent,java.util.ArrayList getStringArrayListExtra
+android.content.SharedPreferences,boolean getBoolean
+android.content.Intent,boolean getBooleanExtra
+android.os.Bundle,boolean getBoolean
+android.location.LocationManager,public Location getLastKnownLocation(@NonNull String provider)

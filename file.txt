@@ -1,0 +1,30 @@
+  if link.startswith("#"):
+            # Case 1: #member (member in the same class)
+            target_member = link[1:]  # Remove the leading '#'
+            if f"{parent_class}#{target_member}" in visited_links:
+                continue
+            visited_links.add(link)
+            if target_member.get("comment") != "" and "@hide" not in target_member.get("comment"):
+                if graph.has_node(target_member) and graph.has_node(member_name):
+                    # If the target member node already exists, add an edge
+                    graph.add_edge(member_name, target_member, type="link")
+                else:
+                    # If the target member node does not exist, create it
+                    graph.add_node(target_member, type="member", comment="")
+                    graph.add_edge(member_name, target_member, type="link")
+            print(f"Added edge from {member_name} to {target_member} (same class member).")
+        elif "#" in link:
+            # Case 2: class#member (member in another class)
+            target_class, target_member = link.split("#")
+            build_graph(output_dir, target_class, graph, visited_links, parent_class=target_class)
+            if graph.has_node(target_member) and graph.has_node(member_name):
+                # If the target member node already exists, add an edge
+                graph.add_edge(member_name, target_member, type="link")
+                #graph.add_edge(member_name, target_member, type="link")
+                print(f"Added edge from {member_name} to {target_member} (member in class {target_class}).")
+            
+        else:
+            # Case 3: class (another class)
+            graph.add_edge(member_name, link, type="link")
+            print(f"Added edge from {member_name} to {link} (another class).")
+            build_graph(output_dir, [link], graph, visited_links, parent_class=link)

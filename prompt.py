@@ -1,0 +1,112 @@
+import requests
+import json
+from transformers import  AutoTokenizer
+
+local_port = 11434     # Local port for forwarding
+
+def set_local_port(port):
+    global local_port
+    local_port = port
+
+def interact_with_deepseek(prompt):
+    base_url = f"http://localhost:{local_port}/api/generate"
+    data = {"model": "deepseek-r1:32b", "prompt": prompt}
+    combined_response = ""
+    try:
+        response = requests.post(base_url, json=data, stream=False)
+        print("print print ")
+        print(response.status_code)
+        if response.status_code == 200:
+            response_lines = response.text.strip().splitlines()
+            for line in response_lines:
+                if line.strip():  # Skip any empty lines
+                    try:
+                        json_obj = json.loads(line)
+                        combined_response += json_obj.get('response', '')
+                        if json_obj.get('done', False):
+                            break  # End of stream
+                    except json.JSONDecodeError:
+                        print(f"Warning: Could not parse line: {line}")
+            print(f"combined_response: {combined_response}")
+            return combined_response.strip()  # Return the combined response string
+        else:
+            return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Connection error: {e}"
+    
+
+
+def get_tokens_deepseek(string):
+    #tokenizer = DeepSeekTokenizer()  # Create an instance of DeepSeekTokenizer
+    #result = DeepSeekTokenizer.encode(text=string)
+
+    chat_tokenizer_dir = "./deepseek/"
+    tokenizer = AutoTokenizer.from_pretrained(chat_tokenizer_dir, trust_remote_code=True)
+    result = tokenizer.encode(string)    
+    return len(result)
+
+
+def create_prompt_class(method, comment,prev_response):
+    # Define the parameters for the completion
+    # Define the parameters for the completion
+    prompt = f"Imagine you are an Android developer expert. "\
+             f" Here is the method {method}, and the comment that the user provide for it below: "\
+             f" {comment}. "\
+             f"Given this information, with the information you currently have predicted from the methods with @link in the comment, which is "\
+             f" {prev_response},"\
+             f" can you tell me what settings in an Android device should be configured for this method to operate correctly?"\
+             f" Example 1: For method public boolean isProviderEnabledForUser, the below comment is given in the android source code"\
+             f" comment description: Returns the current enabled/disabled status of the given provider. To listen for changes, see"\
+             f" @link #PROVIDERS_CHANGED_ACTION. Before API version @link android.os.Build.VERSION_CODES#LOLLIPOP,"\
+             f" this method would throw @link SecurityException if the location permissions were not sufficient to use"\
+             f" the specified provider. "\
+             f" @param provider a provider listed by @link #getAllProviders() "\
+             f" @return true if the provider exists and is enabled "\
+             f" previous response: For getAllProviders, the previous response says, there is no setting needed.  "\
+             f" According to the comment and previous response, the following settings should be configured: "\
+             f" Step 1. open android device settings."\
+             f" Step 2. go to security and privacy."\
+             f" Step 3. Ensure the app has the necessary permissions to access location services."\
+             f" Step 4. Go back to the app settings and choose conneciton."\
+             f" Step 5. Enable Wi-fi or Data connection."\
+             f" Example 2: For the method public @NonNull List<String> getAllProviders(), the below comment is given in the android source code"\
+             f" comment description: Returns a list of all providers that are available on the device. "\
+             f" @return a list of all providers that are available on the device. "\
+             f" previous response: <no response> as there is not @links to any method in the comment. "\
+             f" According to the comment and previous response, no settings is required. "
+    return prompt
+
+def create_prompt_method(method, comment):
+    # Define the parameters for the completion
+    # Define the parameters for the completion
+    prompt = f"Imagine you are an Android developer expert. "\
+             f" Here is the method {method}, and the comment that the user provide for it below: "\
+             f" {comment}. "\
+             f" can you tell me what settings in an Android device should be configured for this method to operate correctly?"\
+             f" Example 1: For method public int getConnectionOwnerUid, given the comment below "\
+             f" comment description: Returns the UID of the owner of the connection if the connection is found"\
+             f" and the app has permission to observe it (e.g., if it is associated with the calling VPN app's tunnel) or -1 if the"\
+             f" connection is not found."\
+             f" resonse: Based on the above comment, the following steps should be perform to configure an Android deivce setting"\
+             f" step 1. open android device setting. "\
+             f" step 2. go to security and privacy and ensure the app has the necessary permissions to network."\
+             f" Example 2: For the method public @NonNull List<String> getAllProviders(), the below comment is given in the android source code"\
+             f" comment description: Returns a list of all providers that are available on the device. "\
+             f" @return a list of all providers that are available on the device. "\
+             f" According to the comment and previous response, no settings is required. "
+    return prompt
+
+def merge_prompts(api_1,response1,api_2,response2):
+    """
+    Merges two prompts into one.
+    """
+    prompt = f"Imagine you are an Android developer expert. "\
+             f" You have predicted that"\
+             f" {response1}"\
+             f" is for operating the API {api_1}"\
+             f" and also, "\
+             f" {response2}"\
+             f" for operating the API {api_2}"\
+             f" If they are called separatedly in an android app code"\
+             f" can you predict the settings required for the app to operate correctly?"
+    return prompt
