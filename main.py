@@ -1,10 +1,11 @@
 import os
 import json
+import time
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 from pyvis.network import Network
-from prompt import prompt  # Assuming you have a prompt module for generating prompts
+import prompt  # Assuming you have a prompt module for generating prompts
 
 def read_excel_file(file_path):
     """
@@ -201,26 +202,6 @@ def get_names_from_link(link, parent_class):
     return target_name, child_name
 
 
-def visualize_graph(graph, output_file="graph.png"):
-    """
-    Visualize the graph and save it as an image.
-    """
-    plt.figure(figsize=(12, 8))
-    pos = nx.spring_layout(graph)
-    nx.draw(
-        graph,
-        pos,
-        with_labels=True,
-        node_size=2000,
-        node_color="lightblue",
-        font_size=10,
-        font_color="black",
-        edge_color="gray",
-    )
-    plt.title("Graph of @link References")
-    plt.savefig(output_file)  # Save the graph as an image
-    plt.show()
-
 def read_function_list(file_path):
     """
     Read the function_list.txt file and parse the class and function names.
@@ -387,41 +368,21 @@ def find_top_dependencies(class_dependencies, top_n=5):
 
     return max_dependencies, min_dependencies
 
-def build_graph_initiate(links,output_dir):
-      # Build the graph
+def build_graph_initiate(links,output_dir,output_graph_dir):
+    # Build the graph
     graph = build_graph(output_dir, links)
-    #for node, data in graph.nodes(data=True):
-        #for key, value in data.items():
-            #if value is None:
-                #print(f"Node {node} has a None value for attribute {key}")
     # remove all edges with type variable
     edges_to_remove = [(source, target) for source, target, data in graph.edges(data=True) if data.get("type") == "variable"]
     graph.remove_edges_from(edges_to_remove)
-    #for source, target, data in graph.edges(data=True):
-        #for key, value in data.items():
-            #if value is None:
-                #print(f"Edge {source} -> {target} has a None value for attribute {key}")
     
-    visualize_graph(graph, "class_graph.png")
-    visualize_interactive(graph, "class_graph.html")
-
-    #graph = make_graph_acyclic(graph)  # Convert to acyclic graph if needed
-    # Visualize the graph
-    #visualize_graph(graph, "class_graph_acyclic.png")
-   # visualize_interactive(graph, "class_graph_acyclic.html")
 
     # Save the graph to a file (optional)
-    nx.write_gml(graph, "class_graph.gml")  # Save in GML format for visualization
+    file_name = links[0] if links else "class_graph"
+    graph_path = os.path.join(output_graph_dir, f"{file_name}.gml")
+    html_path = os.path.join(output_graph_dir, f"{file_name}.html")
+    visualize_interactive(graph, html_path)
+    nx.write_gml(graph, graph_path)  # Save in GML format for visualization
 
-    # Print graph information
-    print(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
-    print("Nodes:")
-    for node, data in graph.nodes(data=True):
-        print(f"{node}: {data}")
-    print("Edges:")
-    for source, target, data in graph.edges(data=True):
-        print(f"{source} -> {target}: {data}")
-     # Calculate depth and number of nodes
     depth = get_graph_depth(graph)
     num_nodes = get_number_of_nodes(graph)
 
@@ -472,22 +433,25 @@ def traverse_from_leaves_to_roots_with_cycles(graph):
     node_results = {}
     visited_nodes = set()  # To keep track of visited nodes
     processing_nodes = set()  # To track nodes currently being processed
-
+    period = time.time()  # Start time for performance measurement
+    prompt_token = 0
+    response_token = 0
     
     # Step 5: Compute results for all nodes starting from leaf nodes
     node = next(iter(graph.nodes)) # Get one node from the reversed graph
-    compute_result(node,node_results,graph,visited_nodes,processing_nodes)
+    prompt_token, response_token = compute_result(node,node_results,graph,visited_nodes,processing_nodes)
+    period = time.time() - period  # End time for performance measurement
     # Get the next node to process
        
-    return node_results
+    return node_results,period, prompt_token, response_token
 
 
 # Step 4: Define a helper function for dynamic programming
-def compute_result(node,node_results,graph,visited_nodes,processing_nodes):
+def compute_result(node,node_results,graph,visited_nodes,processing_nodes,prompt_token=0,response_token=0):
    
     if node in processing_nodes:
         print(f"Node {node} has already been visited, using cached value.")
-        return
+        return prompt_token, response_token  # Return the number of tokens in the response and prompt
     
     # Mark the node as being processed
     processing_nodes.add(node)
@@ -495,61 +459,202 @@ def compute_result(node,node_results,graph,visited_nodes,processing_nodes):
     # If the result for the current node is already computed, return it
     if graph.out_degree(node) == 0:
         print(f"Node {node} is a leaf node, returning its value.")
-        if node.get("comment") is not None and node.get("comment") != "" and node.get("comment") != "No comment available":
+        node_attributes = graph.nodes[node]  # Access the node's attributes
+        if node_attributes.get("comment") is not None and node_attributes.get("comment") != "" and node_attributes.get("comment") != "No comment available":
             # If the node has a comment, create a prompt and interact with DeepSeek
-            prompt = prompt.create_prompt_method(node, graph.nodes[node].get("comment", ""))
-            response = prompt.interact_with_deepseek(prompt)
+            prompt_instance = prompt.create_prompt_method(node, node_attributes.get("comment", ""))
+            response = prompt.interact_with_deepseek(prompt_instance)
             node_results[node] = str(response)
+            log_response(response, prompt_instance, node, prompt_token, response_token)
+            return prompt_token+prompt.get_tokens_deepseek(prompt_instance), response_token+prompt.get_tokens_deepseek(response)  # Return the number of tokens in the response and prompt
             # add code for logging the response and the number of tokens and run-time infomrmation
         else :
             # If the node has no comment, return its name
             node_results[node] = ""
         visited_nodes.add(node)  # Mark the node as visited
         #processing_nodes.remove(node)
-        return
+        return prompt_token, response_token  # Return the number of tokens in the response and prompt
     
     
     print(f"Computing result for node: {node}")
-
-    successors_results = []
-    for successor in graph.successors(node):  # Ensure `node` is a valid identifier
+    successors = list(graph.successors(node)) 
+    for successor in successors:  # Ensure `node` is a valid identifier
         if successor not in node_results and successor not in processing_nodes:            
-            compute_result(successor, node_results, graph, visited_nodes, processing_nodes)
-            successors_results.append(node_results[successor])
+            prompt_token,response_token = compute_result(successor, node_results, graph, visited_nodes, processing_nodes,prompt_token, response_token)
 
+    response_init =""
     # Merge successor results and compute the current node's value
-    for result in successors_results:
-        if result is None or result == "":
-            continue
-        prompt = prompt.create_prompt_class(node, result)
-        response = prompt.interact_with_deepseek(prompt)
-        if response is None or response == "":
-            print(f"Response for node {node} is None or empty, skipping.")
-            continue
-        node_results[node] = str(response)
-    node_results[node] = str(node) + " -> " + ", ".join(successors_results)
+    if len(successors) == 0:
+        print(f"No successors found for node {node}, skipping.")
+    elif len(successors) == 1:
+        # If there's only one successor, use its result directly
+        successor = successors[0]
+        node_attributes = graph.nodes[node] # Access the node's attributes
+        response_init = node_results.get(successor, "")
+        prompt_instance = prompt.create_prompt_class(node_attributes.get("name"), node_attributes.get("comment", ""),response_init)
+        response_init = prompt.interact_with_deepseek(prompt_instance)
+        if response_init is not None or response_init != "":
+            response_token += prompt.get_tokens_deepseek(response_init)
+        prompt_token += prompt.get_tokens_deepseek(prompt_instance)
+        log_response(response_init, prompt_instance, node, prompt_token, response_token)
+        node_results[node] = str(response_init)
+    else:
+        # get first successor of node
+        response_init = node_results.get(successors[0], "")  # Use the first successor's result as the initial response
+        for successor in successors[1:]:
+            if successor not in node_results and successor not in visited_nodes:
+                print(f"Successor {successor} not found in node_results, skipping.")
+                continue
+            prompt_instance = prompt.merge_prompts(graph.nodes[successor].get("name"),node_results[successor],response_init)
+            response_init = prompt.interact_with_deepseek(prompt_instance)
+            prompt_token += prompt.get_tokens_deepseek(prompt_instance)
+            if response_init is not None or response_init != "":
+                response_token += prompt.get_tokens_deepseek(response_init)
+            
+            if response_init is None or response_init == "":
+                print(f"Response for node {node} is None or empty, skipping.")
+                continue
+        log_response(response_init, None, node, prompt_token, response_token)
+        node_results[node] = str(response_init)  # Store the final result for the node
+        #print(f"Final result for node {node}: {node_results[node]}")
+    # node_results[node] = str(node) + " -> " + ", " response_init  # Store the result in the node_results dictionary
     visited_nodes.add(node)  # Mark the node as visited
     #processing_nodes.remove(node)  # Remove the node from processing set
+    return prompt_token, response_token  # Return the number of tokens in the response and prompt
 
     
- 
+def log_response(response, prompt, node, prompt_token, response_token):
+    """
+    Log the response, prompt, node, period, prompt token count, and response token count.
+    """
+    log_entry = {
+        "response": response,
+        "node": node,
+        "prompt_token": prompt_token,
+        "response_token": response_token
+    }
+    with open("response_log.json", "a") as log_file:
+        json.dump(log_entry, log_file)
+        log_file.write("\n")  # Write a newline for each entry
+
+def build_graph_from_json(output_dir, output_graph_dir, class_names):
+    class_file = find_class_file(output_dir, class_names)
+    if class_file:  
+        with open(class_file, "r") as f:
+            data = json.load(f)
+            graph = build_graph_initiate(class_names, output_dir,output_graph_dir)
+            return graph
+    return None
+
+
+def find_graph(class_name, output_dir):
+    """
+    Find the graph for a specific class in the output directory.
+    """
+    class_graph_name = f"{class_name}.gml" 
+    class_graph_path = os.path.join(output_dir, class_graph_name)
+    if os.path.exists(class_graph_path):
+        print(f"Graph file found for class {class_name}: {class_graph_path}")
+        return nx.read_gml(class_graph_path)  # Load the graph from the GML file
+    else:
+        print(f"Graph file not found for class {class_name}.")
+        return None
+    
+def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
+    """
+    Handle the operation that the user perform.
+    """
+    # Tell user about the available operations
+    print(f" Choose one operation to perform:")
+    print(f" 1. Read from Excel file and build the graph for each class (if not exists), then interact with LLM to find dependencies.")
+    print(f" 2. Specify the path of excel file consisting of the list of classes. ")
+    print(f" 3. Enter a class name and find its dependencies.")
+    print(f" 4. Exit")
+    
+    # Get user input for the operation
+    operation = input("Enter the operation you want to perform (e.g., 'find', 'analyze', etc.): ")
+    # Perform the operation based on user input
+    if operation == "1":
+        # Read the Excel file and build the graph for each class
+        class_names = read_excel_file(output_excel_dir)
+        for class_name in class_names:
+            graph = build_graph_from_json(output_json_dir, output_graph_dir, class_names)
+        print(f"Graph built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
+        
+    elif operation == "2":
+        # Specify the path of the Excel file
+        file_path = input("Enter the path of the Excel file: ")
+        file_path = output_excel_dir + "/" + file_path if not file_path.startswith("/") else file_path
+        if not os.path.exists(file_path):
+            print(f"File {file_path} does not exist. Please check the path and try again.")
+            return None
+        class_names = read_excel_file(file_path)
+        for class_name in class_names:
+            graph = build_graph_from_json(output_json_dir, output_graph_dir,class_names)
+        print(f"Graph built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
+    elif operation == "3":
+        # Enter a class name and find its dependencies
+        class_name = input("Enter the class name to find its dependencies: ")
+        class_graph = find_graph(class_name, output_graph_dir)
+        if class_graph is None:
+            # If the graph for the class is not found, check if json file exists, 
+            graph = build_graph_from_json(output_json_dir, output_graph_dir,[class_name])
+            if graph is None:
+                # If the graph is still not found, print an error message
+                print(f"Graph for class {class_name} not found. Please ensure the class name is correct and the graph exists in the output directory.")
+                return None
+            traverse_from_leaves_to_roots_with_cycles(graph)
+            print(f"Graph for class {class_name} built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
+        else:
+            print(f"Graph for class {class_name} found with {class_graph.number_of_nodes()} nodes and {class_graph.number_of_edges()} edges.")
+        
+    elif operation == "4":
+        # Exit the program
+        print("Exiting the program.")
+        return None
+    else:
+        print(f"Invalid operation: {operation}. Please choose a valid operation.")
+        return None
+    
+    # Example operation: just return the node name
+    return str(operation)  # Convert the operation to a string representation
 
 def main():
     # Paths
-    output_dir = "/home/maryam/clearblue/java-code/java-code/output"
+    output_json_dir = "/home/maryam/clearblue/java-code/java-code/output"
+    output_excel_dir = "/home/maryam/clearblue/java-code/java-code/py-code/functions"
+    output_graph_dir = "/home/maryam/clearblue/java-code/java-code/py-code/graphs"
+    # Ensure the output directory exists
+    if not os.path.exists(output_json_dir):
+        os.makedirs(output_json_dir)
+    if not os.path.exists(output_excel_dir):
+        os.makedirs(output_excel_dir)
+
     links = [
         # Example links to process
         "android.telephony.TelephonyManager"
     ]
-    graph = build_graph_initiate(links, output_dir)
-    if graph is None:
-        print("No graph was built. Exiting.")
-        graph = nx.DiGraph()
-        graph.add_edges_from([
-            ("A", "B"),
-            ("B", "C"),
-            ("C", "A")
-        ])
+    #graph = build_graph_initiate(links, output_dir)
+    graph = None
+    #if graph is None:
+    #    print("No graph was built. Exiting.")
+    #    graph = nx.DiGraph()
+    #    # Add nodes with attributes
+    #    graph.add_node("A", name="Node A", comment="This is node A")
+    #    graph.add_node("B", name="Node B", comment="This is node B")
+    #    graph.add_node("C", name="Node C", comment="This is node C")
+
+        # Add edges between the nodes
+    #    graph.add_edges_from([
+    #        ("A", "B"),
+    #        ("B", "C"),
+    #        ("C", "A")
+    #    ])
+    # Filepath to the .gml file
+    gml_file_path = "/home/maryam/clearblue/java-code/py-code/class_graph.gml"
+
+    # Read the graph from the .gml file
+    graph = nx.read_gml(gml_file_path)
 
     node_results = traverse_from_leaves_to_roots_with_cycles(graph)
     for node in node_results:

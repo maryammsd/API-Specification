@@ -16,13 +16,20 @@ def interact_with_deepseek(prompt):
         response = requests.post(base_url, json=data, stream=False)
         print("print print ")
         print(response.status_code)
+        after_think = False  # Flag to track when to start appending responses
         if response.status_code == 200:
             response_lines = response.text.strip().splitlines()
             for line in response_lines:
                 if line.strip():  # Skip any empty lines
                     try:
                         json_obj = json.loads(line)
-                        combined_response += json_obj.get('response', '')
+                        response_text = json_obj.get('response', '')
+                         # Check if the line contains </think>
+                        if "</think>" in response_text:
+                            after_think = True  # Start appending responses after </think>
+                            continue
+                        if after_think:
+                            combined_response += response_text
                         if json_obj.get('done', False):
                             break  # End of stream
                     except json.JSONDecodeError:
@@ -40,7 +47,7 @@ def get_tokens_deepseek(string):
     #tokenizer = DeepSeekTokenizer()  # Create an instance of DeepSeekTokenizer
     #result = DeepSeekTokenizer.encode(text=string)
 
-    chat_tokenizer_dir = "./deepseek/"
+    chat_tokenizer_dir = "deepseek"
     tokenizer = AutoTokenizer.from_pretrained(chat_tokenizer_dir, trust_remote_code=True)
     result = tokenizer.encode(string)    
     return len(result)
@@ -49,6 +56,7 @@ def get_tokens_deepseek(string):
 def create_prompt_class(method, comment,prev_response):
     # Define the parameters for the completion
     # Define the parameters for the completion
+    
     prompt = f"Imagine you are an Android developer expert. "\
              f" Here is the method {method}, and the comment that the user provide for it below: "\
              f" {comment}. "\
@@ -73,7 +81,13 @@ def create_prompt_class(method, comment,prev_response):
              f" comment description: Returns a list of all providers that are available on the device. "\
              f" @return a list of all providers that are available on the device. "\
              f" previous response: <no response> as there is not @links to any method in the comment. "\
-             f" According to the comment and previous response, no settings is required. "
+             f" According to the comment and previous response, no settings is required. "\
+             f" Please follow the same format for the method and comment provided above."\
+             f" Your output should be in the following format:"\
+             f" Step 1. open android device settings."\
+             f" Step 2. go to security and privacy."\
+             f" Step 3. Ensure the app has the necessary permissions to access location services."\
+             f" Or if no settings is required, just say no settings is required."
     return prompt
 
 def create_prompt_method(method, comment):
@@ -93,20 +107,36 @@ def create_prompt_method(method, comment):
              f" Example 2: For the method public @NonNull List<String> getAllProviders(), the below comment is given in the android source code"\
              f" comment description: Returns a list of all providers that are available on the device. "\
              f" @return a list of all providers that are available on the device. "\
-             f" According to the comment and previous response, no settings is required. "
+             f" According to the comment and previous response, no settings is required. "\
+             f" Please follow the same format for the method and comment provided above."\
+             f" Your output should be in the following format:"\
+             f" Step 1. open android device settings."\
+             f" Step 2. go to security and privacy."\
+             f" Step 3. Ensure the app has the necessary permissions to access location services."\
+             f" Or if no settings is required, just say no settings is required."
     return prompt
 
-def merge_prompts(api_1,response1,api_2,response2):
+def merge_prompts(api_1,response1,previous_response):
     """
     Merges two prompts into one.
     """
+    print("......................................................................")
+    print("Merging prompts...")
+    print(f"API 1: {api_1}")
+    print(f"Response 1: {response1}")
+    print(f"Previous Response: {previous_response}")
     prompt = f"Imagine you are an Android developer expert. "\
              f" You have predicted that"\
              f" {response1}"\
              f" is for operating the API {api_1}"\
              f" and also, "\
-             f" {response2}"\
-             f" for operating the API {api_2}"\
-             f" If they are called separatedly in an android app code"\
-             f" can you predict the settings required for the app to operate correctly?"
+             f" {previous_response}"\
+             f" is already required to be set."\
+             f" If we call {api_1} while the mentioned setting must be met,"\
+             f" can you predict the settings required for the app to operate correctly?"\
+             f" Your output should be in the following format:"\
+             f" Step 1. open android device settings."\
+             f" Step 2. go to security and privacy."\
+             f" Step 3. Ensure the app has the necessary permissions to access location services."\
+             f" Or if no settings is required, just say no settings is required."
     return prompt

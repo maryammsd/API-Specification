@@ -28,6 +28,7 @@
 ./functions/*
 ./log.txt
 ./.env/*
+./graphs/*
 
 # OS generated files #
 ######################
