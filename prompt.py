@@ -94,7 +94,7 @@ def create_prompt_method(method, comment):
     # Define the parameters for the completion
     # Define the parameters for the completion
     prompt = f"Imagine you are an Android developer expert. "\
-             f" Here is the method {method}, and the comment that the user provide for it below: "\
+             f" Here is the API {method}, and the comment that the user provide for it below: "\
              f" {comment}. "\
              f" can you tell me what settings in an Android device should be configured for this method to operate correctly?"\
              f" Example 1: For method public int getConnectionOwnerUid, given the comment below "\
@@ -116,7 +116,7 @@ def create_prompt_method(method, comment):
              f" Or if no settings is required, just say no settings is required."
     return prompt
 
-def merge_prompts(api_1,response1,previous_response):
+def merge_prompts(api_1,response1,previous_response,main_api):
     """
     Merges two prompts into one.
     """
@@ -128,15 +128,13 @@ def merge_prompts(api_1,response1,previous_response):
     prompt = f"Imagine you are an Android developer expert. "\
              f" You have predicted that"\
              f" {response1}"\
-             f" is for operating the API {api_1}"\
-             f" and also, "\
-             f" {previous_response}"\
-             f" is already required to be set."\
-             f" If we call {api_1} while the mentioned setting must be met,"\
-             f" can you predict the settings required for the app to operate correctly?"\
+             f" is for operating the API {api_1}."\
+             f" This API is accessed in {main_api} and we need "\
+             f" {previous_response} to be configured."\
+             f" If {api_1} is called in {main_api},"\
+             f" can you predict the settings required for {main_api} to operate correctly?"\
              f" Your output should be in the following format:"\
              f" Step 1. open android device settings."\
              f" Step 2. go to security and privacy."\
-             f" Step 3. Ensure the app has the necessary permissions to access location services."\
-             f" Or if no settings is required, just say no settings is required."
+             f" Step 3. Ensure the app has the necessary permissions to access location services."
     return prompt

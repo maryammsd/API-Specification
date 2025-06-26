@@ -469,10 +469,32 @@ def traverse_from_leaves_to_roots_with_cycles(graph):
     prompt_token, response_token = compute_result(node,node_results,graph,visited_nodes,processing_nodes)
     period = time.time() - period  # End time for performance measurement
     # Get the next node to process
+
+    print(f"Total time {period}")
+    print(f"Total tokens response and prompt are {response_token} and {prompt_token}")
+
+    print(f"Successor of the node {node}")
+    # print result of successor of the node 
+    for successor in graph.successors(node):
+        print(f"Successor: {successor}, Result: {node_results.get(successor, 'No result available')}")
        
     return node_results,period, prompt_token, response_token
 
-
+def check_no_setting(response):
+    response_lower = str(response).lower()
+    if "no setting" in response_lower:
+        return True
+    if "no additional setting" in response_lower:
+        return True
+    if "no additional device setting" in response_lower:
+        return True
+    if "no specific device setting" in response_lower:
+        return True
+    if "no specific Android device settings" in response_lower:
+        return True
+    if "no further device setting" in response_lower:
+        return True
+    return False
 # Step 4: Define a helper function for dynamic programming
 def compute_result(node,node_results,graph,visited_nodes,processing_nodes,prompt_token=0,response_token=0):
    
@@ -518,32 +540,62 @@ def compute_result(node,node_results,graph,visited_nodes,processing_nodes,prompt
         successor = successors[0]
         node_attributes = graph.nodes[node] # Access the node's attributes
         response_init = node_results.get(successor, "")
-        prompt_instance = prompt.create_prompt_class(node_attributes.get("name"), node_attributes.get("comment", ""),response_init)
-        response_init = prompt.interact_with_deepseek(prompt_instance)
-        if response_init is not None or response_init != "":
-            response_token += prompt.get_tokens_deepseek(response_init)
-        prompt_token += prompt.get_tokens_deepseek(prompt_instance)
-        log_response(response_init, prompt_instance, node, prompt_token, response_token)
-        node_results[node] = str(response_init)
-    else:
-        # get first successor of node
-        response_init = node_results.get(successors[0], "")  # Use the first successor's result as the initial response
-        for successor in successors[1:]:
-            if successor not in node_results and successor not in visited_nodes:
-                print(f"Successor {successor} not found in node_results, skipping.")
-                continue
-            prompt_instance = prompt.merge_prompts(graph.nodes[successor].get("name"),node_results[successor],response_init)
+        if check_no_setting(response_init) is False:
+            prompt_instance = prompt.create_prompt_class(node_attributes.get("name"), node_attributes.get("comment", ""),response_init)
             response_init = prompt.interact_with_deepseek(prompt_instance)
-            prompt_token += prompt.get_tokens_deepseek(prompt_instance)
             if response_init is not None or response_init != "":
                 response_token += prompt.get_tokens_deepseek(response_init)
+            prompt_token += prompt.get_tokens_deepseek(prompt_instance)
+            log_response(response_init, prompt_instance, node, prompt_token, response_token)
+            node_results[node] = str(response_init)
+        else:
+            prompt_instance = prompt.create_prompt_method(node_attributes.get("name"), node_attributes.get("comment", ""))
+            response_init = prompt.interact_with_deepseek(prompt_instance)
+            if response_init is not None or response_init != "":
+                response_token += prompt.get_tokens_deepseek(response_init)
+            prompt_token += prompt.get_tokens_deepseek(prompt_instance)
+            log_response(response_init, prompt_instance, node, prompt_token, response_token)
+            node_results[node] = str(response_init)
+    else:
+        # get first successor of node
+        index = 0
+        while index < len(successors):
+            if check_no_setting(node_results.get(successors[index], "")) is False:
+                print(f"[setting] found for {successors[index]}")
+                response_init = node_results.get(successors[index], "")  # Use the first successor's result as the initial response
+                break
+            print(f" [no-setting] for {successors[index]}")
+            index += 1
             
-            if response_init is None or response_init == "":
-                print(f"Response for node {node} is None or empty, skipping.")
-                continue
-        log_response(response_init, None, node, prompt_token, response_token)
+        print(f" index is {index} from lenght of successors {len(successors)}")
+        if index < len(successors):
+            for successor in successors[index:]:
+                if successor not in node_results and successor not in visited_nodes:
+                    print(f"Successor {successor} not found in node_results, skipping.")
+                    continue
+                node_attributes = graph.nodes[successor] # Access the node's attributes
+                no_setting_successor = check_no_setting(node_results[successor])
+                no_setting_previous = check_no_setting(response_init)
+                if no_setting_successor is True and no_setting_previous is True:
+                    continue
+                elif no_setting_previous is True:
+                    response_init = node_results[successor]
+                    continue
+                elif no_setting_successor is True:
+                    continue
+                print(f" Successor has the non setting configuration, so let's check it with previous one")
+                prompt_instance = prompt.merge_prompts(successor,node_results[successor],response_init,node)
+                response_init = prompt.interact_with_deepseek(prompt_instance)
+                prompt_token += prompt.get_tokens_deepseek(prompt_instance)
+                if response_init is not None or response_init != "":
+                    response_token += prompt.get_tokens_deepseek(response_init)
+                
+                if response_init is None or response_init == "":
+                    print(f"Response for node {node} is None or empty, skipping.")
+                    continue
+            log_response(response_init, None, node, prompt_token, response_token)
         node_results[node] = str(response_init)  # Store the final result for the node
-        #print(f"Final result for node {node}: {node_results[node]}")
+    print(f"Final result for node {node}: {node_results[node]}")
     # node_results[node] = str(node) + " -> " + ", " response_init  # Store the result in the node_results dictionary
     visited_nodes.add(node)  # Mark the node as visited
     #processing_nodes.remove(node)  # Remove the node from processing set
@@ -604,10 +656,13 @@ def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
     # Perform the operation based on user input
     if operation == "1":
         # Read the Excel file and build the graph for each class
-        class_names = read_excel_file(output_excel_dir)
+        excel_file_name = "static-class-gpt.xlsx"
+        excel_path = f"{output_excel_dir}/{excel_file_name}"
+        class_names = read_excel_file(excel_path)
         for class_name in class_names:
-            graph = build_graph_from_json(output_json_dir, output_graph_dir, class_names)
-        print(f"Graph built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
+            print(f"class name {class_name}")
+            #graph = build_graph_from_json(output_json_dir, output_graph_dir, class_names)
+        #print(f"Graph built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
         
     elif operation == "2":
         # Specify the path of the Excel file
