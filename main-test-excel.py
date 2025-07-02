@@ -1,11 +1,27 @@
 import os
 import json
 import time
+import threading
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
 from pyvis.network import Network
 import prompt  # Assuming you have a prompt module for generating prompts
+import logging 
+
+
+# Configure logging
+logging.basicConfig(
+    filename="application.log",  # Log file name in the current directory
+    level=logging.INFO,          # Log level (INFO, DEBUG, WARNING, ERROR, CRITICAL)
+    format="%(asctime)s - %(levelname)s - %(message)s"  # Log format
+)
+
+def log_message(message):
+    """
+    Log a message to the log file.
+    """
+    logging.info(message)
 
 def read_excel_file(file_path):
     """
@@ -250,9 +266,6 @@ def get_number_of_nodes(graph):
     print(f"Number of nodes in the graph: {num_nodes}")
     return num_nodes
 
-import os
-import networkx as nx
-
 def save_graph_to_gml(graph, output_dir, file_name):
     """
     Save the graph to a .gml file in the specified directory.
@@ -477,7 +490,9 @@ def traverse_from_leaves_to_roots_with_cycles(graph):
     # print result of successor of the node 
     for successor in graph.successors(node):
         print(f"Successor: {successor}, Result: {node_results.get(successor, 'No result available')}")
-       
+    
+    log_message(f"[Success Result] <node>{node} <time>{period} <response-token>{response_token} <prompt-token>{prompt_token} <output>{node_results[node]}")
+    
     return node_results,period, prompt_token, response_token
 
 def check_no_setting(response):
@@ -639,7 +654,82 @@ def find_graph(class_name, output_dir):
     else:
         print(f"Graph file not found for class {class_name}.")
         return None
-    
+
+def run_in_threads(class_names,output_graph_dir,output_json_dir):
+    batch_size = 10  # Number of threads per batch
+
+    # Iterate through the list in chunks of batch_size
+    for i in range(0, len(class_names), batch_size):
+        batch = class_names[i:i + batch_size]  # Get the next batch of class names
+        threads = []
+
+        # Create threads for the current batch
+        for class_name in batch:
+            thread = threading.Thread(target=run_analysis, args=(class_name, output_graph_dir, output_json_dir))
+            threads.append(thread)
+
+        # Start all threads in the batch
+        for thread in threads:
+            thread.start()
+
+        # Wait for all threads in the batch to finish
+        for thread in threads:
+            thread.join()
+
+        print(f"Finished processing batch {i // batch_size + 1} with {len(batch)} classes.")
+
+
+def check_analyzed_before(class_name):
+    # open the json file
+
+    # look for a node equal to @class_name
+
+    # if correct, return the result in form of numbre of nodes, edges, and also 
+    #       response_token, request_token, period and also the result for sure 
+    try:
+        nodes = {}
+        # Open and load the JSON file
+        with open("response_log.json", "r") as json_file:
+            nodes = [json.loads(line) for line in json_file]
+        
+        # Search for the node with the specified name
+        for node in nodes:
+            if node.get("node") == class_name:
+                return node  # Return the node's details if found
+        # If the node is not found, return None
+        #print(f"Node with class_name {class_name} not found")
+        return None
+    except FileNotFoundError:
+        print("JSON file not found: response_log.json")
+        return None
+    except json.JSONDecodeError:
+        print("Error decoding JSON file: response_log.json")
+        return None
+
+def run_analysis(class_name, output_graph_dir, output_json_dir):
+    class_graph = find_graph(class_name, output_graph_dir)
+    if class_graph is None:
+        # If the graph for the class is not found, check if json file exists, 
+        class_graph = build_graph_from_json(output_json_dir, output_graph_dir, class_name)
+        if class_graph is None:
+            log_message(f"[Graph] cannot be build for the class {class_name}")
+            # If the graph is still not found, print an error message
+            print(f"Graph for class {class_name} not found. Please ensure the class name is correct and the graph exists in the output directory.")
+            return None
+    node = check_analyzed_before(class_name)
+    if node is not None:
+        print(f"Response: {node.get('response')}")
+        print(f"---------- Node Name: {node.get('node')}")
+        log_message(f"[Result] for {class_name} is { {node.get('response')} } with {class_graph.number_of_nodes()} nodes and {class_graph.number_of_edges()} edges.")
+        #print(f"Prompt Token: {node.get('prompt_token')}")
+        #print(f"Response Token: {node.get('response_token')}")
+        return
+    #print(f"----- {class_name}: not analyzed before")
+    traverse_from_leaves_to_roots_with_cycles(class_graph)
+    print(f"Graph for class {class_name} found with {class_graph.number_of_nodes()} nodes and {class_graph.number_of_edges()} edges.")
+        
+
+
 def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
     """
     Handle the operation that the user perform.
@@ -659,10 +749,8 @@ def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
         excel_file_name = "static-class-gpt.xlsx"
         excel_path = f"{output_excel_dir}/{excel_file_name}"
         class_names = read_excel_file(excel_path)
-        for class_name in class_names:
-            print(f"class name {class_name}")
-            #graph = build_graph_from_json(output_json_dir, output_graph_dir, class_names)
-        #print(f"Graph built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
+        run_in_threads(class_names,output_graph_dir,output_json_dir)
+            
         
     elif operation == "2":
         # Specify the path of the Excel file
@@ -678,20 +766,7 @@ def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
     elif operation == "3":
         # Enter a class name and find its dependencies
         class_name = input("Enter the class name to find its dependencies: ")
-        class_graph = find_graph(class_name, output_graph_dir)
-        if class_graph is None:
-            # If the graph for the class is not found, check if json file exists, 
-            graph = build_graph_from_json(output_json_dir, output_graph_dir,class_name)
-            if graph is None:
-                # If the graph is still not found, print an error message
-                print(f"Graph for class {class_name} not found. Please ensure the class name is correct and the graph exists in the output directory.")
-                return None
-            
-            print(f"Graph for class {class_name} built with {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges.")
-        else:
-            traverse_from_leaves_to_roots_with_cycles(class_graph)
-            print(f"Graph for class {class_name} found with {class_graph.number_of_nodes()} nodes and {class_graph.number_of_edges()} edges.")
-        
+        run_analysis(class_name,output_graph_dir,output_json_dir)
     elif operation == "4":
         # Exit the program
         print("Exiting the program.")
@@ -706,7 +781,7 @@ def handle_operation(output_json_dir, output_excel_dir, output_graph_dir):
 def main():
     # Paths
     output_json_dir = "/home/maryam/clearblue/java-code/java-code/output"
-    output_excel_dir = "/home/maryam/clearblue/java-code/java-code/py-code/functions"
+    output_excel_dir = "/home/maryam/clearblue/java-code/py-code/functions"
     output_graph_dir = "/home/maryam/clearblue/java-code/java-code/py-code/graphs"
     # Ensure the output directory exists
     if not os.path.exists(output_json_dir):

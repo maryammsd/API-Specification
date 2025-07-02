@@ -14,8 +14,8 @@ def interact_with_deepseek(prompt):
     combined_response = ""
     try:
         response = requests.post(base_url, json=data, stream=False)
-        print("print print ")
-        print(response.status_code)
+        #print("print print ")
+        #print(response.status_code)
         after_think = False  # Flag to track when to start appending responses
         if response.status_code == 200:
             response_lines = response.text.strip().splitlines()
@@ -34,7 +34,7 @@ def interact_with_deepseek(prompt):
                             break  # End of stream
                     except json.JSONDecodeError:
                         print(f"Warning: Could not parse line: {line}")
-            print(f"combined_response: {combined_response}")
+            #print(f"combined_response: {combined_response}")
             return combined_response.strip()  # Return the combined response string
         else:
             return f"Error: {response.status_code}"
@@ -137,4 +137,23 @@ def merge_prompts(api_1,response1,previous_response,main_api):
              f" Step 1. open android device settings."\
              f" Step 2. go to security and privacy."\
              f" Step 3. Ensure the app has the necessary permissions to access location services."
+    return prompt
+
+def create_prompt_api_android_package_setting(package, version):
+    # Define the parameters for the completion
+    prompt = f"Imagine you are an Android developer expert. "\
+             f" Can you estimate what configuration on an Android device setting affect"\
+             f" calling a method from the class{package} in Android version {version} in an app's code ? "\
+             f" Your answer must include the navigation to the required setting as shown the below examples: "\
+             f" Example: For the API class android.Accessibility"\
+             f" Navigate to Accessibility Settings: Step 1) Open setting on an Android device Step 2) Select Accessibility"\
+             f" Step 3) Enable the specific accessibility service that your application provides (e.g., TalkBack, Switch Access, or any custom accessibility service you've developed)"\
+             f" Example: For API class java.util.regex, no configuration in an Android device is needed. "\
+             f" Just follow the above format and do not explain too much or make assumptions. Just answer based on the given information."
+    return prompt
+
+def check_similarity(response1, response2):
+    prompt = f" Can you tell me if these two descriptions {response1} and {response2} for configuring an Android device"\
+             f" are similar? Please perform cosine similarity checking and the output should be"\
+             f" in format <output=value> where value is cosine simlarity you have calculated."
     return prompt
