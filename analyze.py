@@ -59,6 +59,7 @@ def check_no_setting(response):
         return True
     if "no further device setting" in response_lower:
         return True
+    print("setting exists")
     return False
 
 def compare_json_with_excel(json_file_path, excel_file_path):
@@ -115,6 +116,8 @@ def compare_json_with_excel(json_file_path, excel_file_path):
                     "a_prompt": excel_prompt_t   # Replace with actual value
                 }
                 message_log(f"{node_value},{value},{prompt_t},{response_t},{excel_prompt_t},{excel_response_t}")
+                message_log(f"[Our Solution] {excel_result}")
+                message_log(f"[Static Analysis] {json_result}")
             else:
                 # Node does not exist in the Excel file
                 #print(f"Node '{node_value}' not found in Excel. Generating prompt...")
@@ -135,6 +138,8 @@ def compare_json_with_excel(json_file_path, excel_file_path):
                     "a_prompt": mysolution_prompt_t   # Replace with actual value
                 }
                 message_log(f"{node_value},{value},{prompt_t},{response_t},{mysolution_prompt_t},{mysolution_response_t}")
+                message_log(f"[Our Solution] {response}")
+                message_log(f"[Static Analysis] {json_result}")
             
         print(f"matched {match_count} and not matched {not_match_count}")
         print(f"not found {not_found}")
